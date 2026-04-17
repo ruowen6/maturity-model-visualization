@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DataOps Maturity Visualization Portal</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="panel">
+        <div class="panel-header">
+          <p class="eyebrow">Prototype Portal</p>
+          <h1>DataOps Maturity Visualization Builder</h1>
+          <p class="intro">
+            Configure dimensions, color regions, and subcategories, then inspect
+            the interactive concept map and 3D-like columns.
+          </p>
+        </div>
+
+        <section class="card">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Model I/O</p>
+              <h2>Import / Export</h2>
+            </div>
+          </div>
+          <div class="action-row">
+            <button id="export-json" type="button" class="ghost-button">
+              Export JSON
+            </button>
+            <button id="import-json-trigger" type="button" class="ghost-button">
+              Import JSON
+            </button>
+            <input id="import-json-input" type="file" accept=".json,application/json" hidden />
+          </div>
+          <p id="io-status" class="status-note">
+            Save the current maturity model as a `.json` file, or import a saved
+            configuration to restore dimensions, subcategories, scores, colors,
+            positions, and view settings.
+          </p>
+        </section>
+
+        <section class="card">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Step 1</p>
+              <h2>Dimensions</h2>
+            </div>
+            <label class="count-control">
+              <span>Count</span>
+              <input
+                id="dimension-count"
+                type="number"
+                min="2"
+                max="8"
+                step="1"
+              />
+            </label>
+          </div>
+          <div id="dimension-table-wrapper"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Step 2</p>
+              <h2>Subcategories</h2>
+            </div>
+            <button id="regenerate-positions" type="button" class="ghost-button">
+              Randomize Positions
+            </button>
+          </div>
+          <p id="subcategory-status" class="status-note"></p>
+          <div id="subcategory-groups"></div>
+        </section>
+      </aside>
+
+      <main class="stage">
+        <div class="stage-header">
+          <div>
+            <p class="eyebrow">Interactive Canvas</p>
+            <h2>Triangular Concept Map / Polygon Concept Map</h2>
+          </div>
+          <div id="interaction-hint" class="interaction-hint">
+            Right-click a column, then click inside the matching region to move it.
+          </div>
+        </div>
+
+        <section class="viz-card">
+          <div id="canvas-wrap" class="canvas-wrap">
+            <div class="overview-card">
+              <div class="overview-header">
+                <div>
+                  <p class="eyebrow">State Map</p>
+                  <h3>Top View Snapshot</h3>
+                </div>
+                <div class="overview-actions">
+                  <button id="export-overview" type="button" class="ghost-button small-export">
+                    Export SVG
+                  </button>
+                  <button id="export-overview-png" type="button" class="ghost-button small-export">
+                    Export PNG
+                  </button>
+                </div>
+              </div>
+              <svg
+                id="overview-svg"
+                viewBox="0 0 320 320"
+                aria-label="Top view state map"
+              ></svg>
+            </div>
+            <div class="camera-controls">
+              <div class="control-block">
+                <label for="yaw-control">Yaw</label>
+                <input id="yaw-control" type="range" min="-180" max="180" step="1" />
+              </div>
+              <div class="control-block">
+                <label for="pitch-control">Pitch</label>
+                <input id="pitch-control" type="range" min="18" max="82" step="1" />
+              </div>
+              <div class="control-block">
+                <label for="zoom-control">Zoom</label>
+                <input id="zoom-control" type="range" min="70" max="175" step="1" />
+              </div>
+            </div>
+            <svg id="viz-svg" viewBox="0 0 980 760" aria-label="Visualization"></svg>
+            <div id="tooltip" class="tooltip hidden"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
