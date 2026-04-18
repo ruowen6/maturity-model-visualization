@@ -20,6 +20,7 @@ const state = {
   dimensions: [],
   subcategoriesByDimension: {},
   movingSubcategoryId: null,
+  panelWidth: 435,
   camera: { ...DEFAULT_CAMERA },
   drag: {
     active: false,
@@ -45,6 +46,8 @@ const dom = {
   importJsonInput: document.getElementById("import-json-input"),
   exportOverview: document.getElementById("export-overview"),
   exportOverviewPng: document.getElementById("export-overview-png"),
+  panelResizer: document.getElementById("panel-resizer"),
+  appShell: document.querySelector(".app-shell"),
   overviewSvg: document.getElementById("overview-svg"),
   svg: document.getElementById("viz-svg"),
   tooltip: document.getElementById("tooltip"),
@@ -62,6 +65,7 @@ function init() {
   state.dimensions.forEach((dimension, index) => {
     updateSubcategoryCount(dimension.id, index === 0 ? 3 : 2);
   });
+  applyPanelWidth();
   bindEvents();
   renderAll();
 }
@@ -99,6 +103,29 @@ function bindEvents() {
     } finally {
       dom.importJsonInput.value = "";
     }
+  });
+
+  dom.panelResizer.addEventListener("mousedown", (event) => {
+    if (window.innerWidth <= 1100) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = state.panelWidth;
+    dom.panelResizer.classList.add("is-dragging");
+
+    const handleMove = (moveEvent) => {
+      const nextWidth = clamp(startWidth + (moveEvent.clientX - startX), 320, 760);
+      state.panelWidth = nextWidth;
+      applyPanelWidth();
+    };
+
+    const handleUp = () => {
+      dom.panelResizer.classList.remove("is-dragging");
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
   });
 
   dom.yawControl.addEventListener("input", (event) => {
@@ -216,6 +243,14 @@ function bindEvents() {
       renderVisualization();
     }
   });
+}
+
+function applyPanelWidth() {
+  if (window.innerWidth <= 1100) {
+    dom.appShell.style.gridTemplateColumns = "1fr";
+    return;
+  }
+  dom.appShell.style.gridTemplateColumns = `${state.panelWidth}px 12px minmax(0, 1fr)`;
 }
 
 function updateRelocation(event) {
@@ -600,8 +635,8 @@ function renderSubcategoryControls() {
                               />
                             </td>
                             <td>
-                              <div class="level-pill">
-                                ${formatLevelLabel(item.score)}
+                              <div class="level-pill" data-level-display="${item.id}">
+                                ${getLevelFromScore(item.score)}
                               </div>
                             </td>
                             <td>
@@ -657,6 +692,12 @@ function renderSubcategoryControls() {
         const item = findSubcategoryById(event.target.dataset.subcategoryScore);
         if (!item) return;
         item.score = clamp(Number(event.target.value) || 0, 0, 100);
+        const levelDisplay = dom.subcategoryGroups.querySelector(
+          `[data-level-display="${item.id}"]`
+        );
+        if (levelDisplay) {
+          levelDisplay.textContent = `${getLevelFromScore(item.score)}`;
+        }
         renderVisualization();
       });
     });
@@ -743,15 +784,19 @@ function renderVisualization() {
     index,
     ...region,
     projected: region.polygon.map((point) => projectPoint({ ...point, z: 0 })),
-    labelProjected: projectPoint({ ...centroid(region.polygon), z: 0 }),
     dimension: state.dimensions[index],
   }));
 
   const regionMarkup = projectedRegions
     .slice()
-    .sort((a, b) => b.labelProjected.depth - a.labelProjected.depth)
+    .sort(
+      (a, b) =>
+        centroid(b.projected).y - centroid(a.projected).y ||
+        centroid(a.projected).x - centroid(b.projected).x
+    )
     .map((region) => {
       const items = getDimensionSubcategories(region.dimension.id);
+      const labelPlacement = getMainDimensionLabelPlacement(scene, region.index);
       const tooltip = [
         `<strong>${escapeHtml(region.dimension.name)}</strong>`,
         `Subcategories: ${items.length}`,
@@ -771,8 +816,9 @@ function renderVisualization() {
           />
           <text
             class="region-label"
-            x="${region.labelProjected.x}"
-            y="${region.labelProjected.y}"
+            x="${labelPlacement.x}"
+            y="${labelPlacement.y}"
+            transform="rotate(${labelPlacement.angle} ${labelPlacement.x} ${labelPlacement.y})"
           >
             ${escapeHtml(region.dimension.name)}
           </text>
@@ -1144,7 +1190,14 @@ function buildOverviewSvgInner() {
       const projected = targetRegions[slotIndex].polygon.map((point) =>
         worldToOverviewPoint(point, scale, offsetX, offsetY)
       );
-      const regionCentroid = centroid(projected);
+      const labelPlacement = getOverviewDimensionLabelPlacement(
+        targetScene,
+        slotIndex,
+        state.dimensions.length,
+        scale,
+        offsetX,
+        offsetY
+      );
       return `
         <g>
           <polygon
@@ -1154,8 +1207,9 @@ function buildOverviewSvgInner() {
           />
           <text
             class="overview-dimension-label"
-            x="${regionCentroid.x}"
-            y="${regionCentroid.y}"
+            x="${labelPlacement.x}"
+            y="${labelPlacement.y}"
+            transform="rotate(${labelPlacement.angle} ${labelPlacement.x} ${labelPlacement.y})"
           >
             ${escapeHtml(dimension.name)}
           </text>
@@ -1220,11 +1274,12 @@ function buildOverviewSvgInner() {
 
   return `
     <style>
+      svg { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
       .overview-region { stroke: rgba(67, 57, 48, 0.22); stroke-width: 1.2; }
       .overview-outline { fill: none; stroke: rgba(52, 43, 37, 0.32); stroke-width: 1.4; }
       .overview-point { fill-opacity: 0.88; stroke: rgba(36, 31, 27, 0.46); stroke-width: 1.1; }
-      .overview-dimension-label { fill: rgba(47, 41, 37, 0.82); font-size: 11px; font-weight: 700; text-anchor: middle; }
-      .overview-name { fill: rgba(47, 41, 37, 0.92); font-size: 10px; font-weight: 600; }
+      .overview-dimension-label { fill: rgba(58, 58, 58, 0.72); font-size: 15px; font-weight: 800; text-anchor: middle; dominant-baseline: middle; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+      .overview-name { fill: rgba(20, 20, 20, 0.96); font-size: 10px; font-weight: 400; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
       .overview-leader { stroke: rgba(67, 57, 48, 0.44); stroke-width: 1; }
     </style>
     <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="rgba(255,255,255,0.96)" />
@@ -1331,6 +1386,100 @@ function getOverviewDimensionOrder() {
     }))
     .sort((a, b) => a.angle - b.angle)
     .map((entry) => entry.index);
+}
+
+function getOverviewDimensionLabelPlacement(scene, slotIndex, totalSlots, scale, offsetX, offsetY) {
+  if (totalSlots === 2) {
+    const left = worldToOverviewPoint({ x: scene.bounds.left, y: 0 }, scale, offsetX, offsetY);
+    const right = worldToOverviewPoint({ x: scene.bounds.right, y: 0 }, scale, offsetX, offsetY);
+    return slotIndex === 0
+      ? { x: left.x - 18, y: left.y, angle: -90 }
+      : { x: right.x + 18, y: right.y, angle: 90 };
+  }
+
+  const start = scene.vertices[slotIndex];
+  const end = scene.vertices[(slotIndex + 1) % scene.vertices.length];
+  const midpoint = {
+    x: (start.x + end.x) / 2,
+    y: (start.y + end.y) / 2,
+  };
+  const polygonCenter = centroid(scene.vertices);
+  const edgeVector = {
+    x: end.x - start.x,
+    y: end.y - start.y,
+  };
+  let normal = {
+    x: edgeVector.y,
+    y: -edgeVector.x,
+  };
+  const toCenter = {
+    x: polygonCenter.x - midpoint.x,
+    y: polygonCenter.y - midpoint.y,
+  };
+  if (normal.x * toCenter.x + normal.y * toCenter.y > 0) {
+    normal = { x: -normal.x, y: -normal.y };
+  }
+  const normalLength = Math.hypot(normal.x, normal.y) || 1;
+  const normalUnit = {
+    x: normal.x / normalLength,
+    y: normal.y / normalLength,
+  };
+  const offsetDistance = 24;
+  const labelPoint = {
+    x: midpoint.x + normalUnit.x * offsetDistance,
+    y: midpoint.y + normalUnit.y * offsetDistance,
+  };
+  const projectedPoint = worldToOverviewPoint(labelPoint, scale, offsetX, offsetY);
+  let angle = (Math.atan2(edgeVector.y, edgeVector.x) * 180) / Math.PI;
+  if (angle > 90) angle -= 180;
+  if (angle < -90) angle += 180;
+  return {
+    x: projectedPoint.x,
+    y: projectedPoint.y,
+    angle,
+  };
+}
+
+function getMainDimensionLabelPlacement(scene, slotIndex) {
+  if (state.dimensions.length === 2) {
+    const left = projectPoint({ x: scene.bounds.left, y: 0, z: 0 });
+    const right = projectPoint({ x: scene.bounds.right, y: 0, z: 0 });
+    return slotIndex === 0
+      ? { x: left.x - 22, y: left.y, angle: -90 }
+      : { x: right.x + 22, y: right.y, angle: 90 };
+  }
+
+  const projectedVertices = scene.vertices.map((vertex) => projectPoint({ ...vertex, z: 0 }));
+  const start = projectedVertices[slotIndex];
+  const end = projectedVertices[(slotIndex + 1) % projectedVertices.length];
+  const midpoint = {
+    x: (start.x + end.x) / 2,
+    y: (start.y + end.y) / 2,
+  };
+  const polygonCenter = centroid(projectedVertices);
+  const edgeVector = {
+    x: end.x - start.x,
+    y: end.y - start.y,
+  };
+  let normal = {
+    x: edgeVector.y,
+    y: -edgeVector.x,
+  };
+  const toCenter = {
+    x: polygonCenter.x - midpoint.x,
+    y: polygonCenter.y - midpoint.y,
+  };
+  if (normal.x * toCenter.x + normal.y * toCenter.y > 0) {
+    normal = { x: -normal.x, y: -normal.y };
+  }
+  const normalLength = Math.hypot(normal.x, normal.y) || 1;
+  const offsetDistance = 28;
+  const x = midpoint.x + (normal.x / normalLength) * offsetDistance;
+  const y = midpoint.y + (normal.y / normalLength) * offsetDistance;
+  let angle = (Math.atan2(edgeVector.y, edgeVector.x) * 180) / Math.PI;
+  if (angle > 90) angle -= 180;
+  if (angle < -90) angle += 180;
+  return { x, y, angle };
 }
 
 function mapPointToOverviewRegion(point, sourceRegion, targetRegion) {
@@ -1591,10 +1740,6 @@ function getLevelFromScore(score) {
   return Math.min(4, Math.floor(clamp(score, 0, 100) / 20));
 }
 
-function formatLevelLabel(score) {
-  const level = getLevelFromScore(score);
-  return `Level ${level} · ${score}`;
-}
 
 function findSubcategoryById(id) {
   return Object.values(state.subcategoriesByDimension)

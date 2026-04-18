@@ -29,9 +29,10 @@ body {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(340px, 420px) 1fr;
-  gap: 24px;
+  grid-template-columns: minmax(340px, 420px) 12px 1fr;
+  gap: 0;
   padding: 24px;
+  align-items: start;
 }
 
 .panel,
@@ -44,15 +45,42 @@ body {
 
 .panel {
   border-radius: 28px;
-  padding: 22px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 10px;
   position: sticky;
   top: 24px;
   max-height: calc(100vh - 48px);
   overflow-y: auto;
   overscroll-behavior: contain;
+  min-width: 0;
+}
+
+.panel-resizer {
+  width: 12px;
+  min-height: calc(100vh - 48px);
+  position: relative;
+  cursor: col-resize;
+  z-index: 6;
+}
+
+.panel-resizer::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  bottom: 18px;
+  width: 4px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgba(100, 88, 78, 0.16);
+  transition: background 120ms ease;
+}
+
+.panel-resizer:hover::before,
+.panel-resizer.is-dragging::before {
+  background: rgba(90, 124, 163, 0.48);
 }
 
 .panel-header h1,
@@ -61,6 +89,10 @@ body {
   margin: 0;
   font-family: "Georgia", "Times New Roman", serif;
   font-weight: 600;
+}
+
+.stage {
+  padding-left: 24px;
 }
 
 .panel-header h1 {
@@ -305,6 +337,7 @@ input[type="color"] {
   height: auto;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.86);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .camera-controls {
@@ -461,16 +494,19 @@ input[type="color"] {
 }
 
 .overview-dimension-label {
-  fill: rgba(47, 41, 37, 0.82);
+  fill: rgba(58, 58, 58, 0.72);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   text-anchor: middle;
+  dominant-baseline: middle;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .overview-name {
-  fill: rgba(47, 41, 37, 0.92);
+  fill: rgba(20, 20, 20, 0.96);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 400;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .overview-leader {
@@ -513,12 +549,21 @@ input[type="color"] {
 @media (max-width: 1100px) {
   .app-shell {
     grid-template-columns: 1fr;
+    gap: 24px;
   }
 
   .panel {
     position: relative;
     top: auto;
     max-height: none;
+  }
+
+  .panel-resizer {
+    display: none;
+  }
+
+  .stage {
+    padding-left: 0;
   }
 
   .viz-card {
