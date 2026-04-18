@@ -10,6 +10,7 @@ const pastelPalette = [
 ];
 
 const VIEW_SCALE = 1.16;
+const SPLIT_LAYOUT_BREAKPOINT = 1320;
 const DEFAULT_CAMERA = {
   yaw: -0.72,
   pitch: 0.96,
@@ -106,7 +107,7 @@ function bindEvents() {
   });
 
   dom.panelResizer.addEventListener("mousedown", (event) => {
-    if (window.innerWidth <= 1100) return;
+    if (window.innerWidth <= SPLIT_LAYOUT_BREAKPOINT) return;
     event.preventDefault();
     const startX = event.clientX;
     const startWidth = state.panelWidth;
@@ -243,10 +244,14 @@ function bindEvents() {
       renderVisualization();
     }
   });
+
+  window.addEventListener("resize", () => {
+    applyPanelWidth();
+  });
 }
 
 function applyPanelWidth() {
-  if (window.innerWidth <= 1100) {
+  if (window.innerWidth <= SPLIT_LAYOUT_BREAKPOINT) {
     dom.appShell.style.gridTemplateColumns = "1fr";
     return;
   }
