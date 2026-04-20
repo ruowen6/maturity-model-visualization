@@ -11,6 +11,10 @@ const pastelPalette = [
 
 const VIEW_SCALE = 1.16;
 const SPLIT_LAYOUT_BREAKPOINT = 1320;
+const OVERVIEW_BASE_SIZE = 320;
+const OVERVIEW_PADDING = 26;
+const OVERVIEW_LABEL_FONT_SIZE = 10;
+const OVERVIEW_LABEL_LINE_HEIGHT = 12;
 const DEFAULT_CAMERA = {
   yaw: -0.72,
   pitch: 0.96,
@@ -21,6 +25,7 @@ const state = {
   dimensions: [],
   subcategoriesByDimension: {},
   movingSubcategoryId: null,
+  overviewCollapsed: false,
   panelWidth: 435,
   camera: { ...DEFAULT_CAMERA },
   drag: {
@@ -47,6 +52,9 @@ const dom = {
   importJsonInput: document.getElementById("import-json-input"),
   exportOverview: document.getElementById("export-overview"),
   exportOverviewPng: document.getElementById("export-overview-png"),
+  overviewCard: document.getElementById("overview-card"),
+  overviewContent: document.getElementById("overview-content"),
+  overviewToggle: document.getElementById("overview-toggle"),
   panelResizer: document.getElementById("panel-resizer"),
   appShell: document.querySelector(".app-shell"),
   overviewSvg: document.getElementById("overview-svg"),
@@ -68,6 +76,7 @@ function init() {
   });
   applyPanelWidth();
   bindEvents();
+  syncOverviewCard();
   renderAll();
 }
 
@@ -86,6 +95,7 @@ function bindEvents() {
   dom.exportJson.addEventListener("click", exportModelAsJson);
   dom.exportOverview.addEventListener("click", exportOverviewAsSvg);
   dom.exportOverviewPng.addEventListener("click", exportOverviewAsPng);
+  dom.overviewToggle.addEventListener("click", toggleOverviewCard);
   dom.importJsonTrigger.addEventListener("click", () => {
     dom.importJsonInput.click();
   });
@@ -307,16 +317,30 @@ function exportOverviewAsSvg() {
 }
 
 function exportOverviewAsPng() {
-  const markup = buildOverviewSvgMarkup(true);
+  const overview = buildOverviewSvgData();
+  const markup = buildOverviewSvgMarkup(true, overview);
   const svgBlob = new Blob([markup], { type: "image/svg+xml;charset=utf-8" });
   const svgUrl = URL.createObjectURL(svgBlob);
   const image = new Image();
 
   image.onload = () => {
+    const aspectRatio = overview.width / overview.height || 1;
+    const longestEdge = 1600;
     const canvas = document.createElement("canvas");
-    canvas.width = 1280;
-    canvas.height = 1280;
+    if (aspectRatio >= 1) {
+      canvas.width = longestEdge;
+      canvas.height = Math.max(1, Math.round(longestEdge / aspectRatio));
+    } else {
+      canvas.height = longestEdge;
+      canvas.width = Math.max(1, Math.round(longestEdge * aspectRatio));
+    }
     const context = canvas.getContext("2d");
+    if (!context) {
+      URL.revokeObjectURL(svgUrl);
+      dom.ioStatus.textContent = "PNG export failed. Canvas rendering is unavailable.";
+      return;
+    }
+    context.imageSmoothingEnabled = true;
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
@@ -875,10 +899,6 @@ function renderVisualization() {
 
     <rect x="28" y="28" width="924" height="704" rx="28" class="helper-banner" fill="url(#floor-gradient)" />
 
-    <text class="legend-note" x="58" y="80">
-      Right-drag or use the sliders to rotate the 3D view. Mouse wheel or the zoom slider changes distance. Press R to reset.
-    </text>
-
     <g>
       <polygon class="axis-line floor-outline" points="${pointsToString(
         scene.vertices.map((vertex) => projectPoint({ ...vertex, z: 0 }))
@@ -1131,20 +1151,22 @@ function updateInteractionHint() {
 }
 
 function renderOverviewMap() {
-  dom.overviewSvg.innerHTML = buildOverviewSvgInner();
+  const overview = buildOverviewSvgData();
+  dom.overviewSvg.setAttribute("viewBox", overview.viewBox);
+  dom.overviewSvg.innerHTML = overview.markup;
 }
 
-function buildOverviewSvgMarkup(includeXmlns = false) {
+function buildOverviewSvgMarkup(includeXmlns = false, overview = buildOverviewSvgData()) {
   const xmlns = includeXmlns ? ' xmlns="http://www.w3.org/2000/svg"' : "";
-  return `<svg${xmlns} viewBox="0 0 320 320" aria-label="Top view state map">
-${buildOverviewSvgInner()}
+  return `<svg${xmlns} viewBox="${overview.viewBox}" width="${overview.width}" height="${overview.height}" aria-label="Top view state map">
+${overview.markup}
 </svg>\n`;
 }
 
-function buildOverviewSvgInner() {
-  const width = 320;
-  const height = 320;
-  const padding = 26;
+function buildOverviewSvgData() {
+  const width = OVERVIEW_BASE_SIZE;
+  const height = OVERVIEW_BASE_SIZE;
+  const padding = OVERVIEW_PADDING;
   const sourceScene = getSceneGeometryForDimensions(state.dimensions);
   const sourceRegions = getRegionGeometryForDimensions(state.dimensions);
   const targetScene = getSceneGeometryForDimensions(state.dimensions);
@@ -1188,6 +1210,9 @@ function buildOverviewSvgInner() {
     ...outlinePoints.map((point) => Math.hypot(point.x - center.x, point.y - center.y))
   );
   const labelBoxes = [];
+  const contentBounds = createBounds();
+
+  outlinePoints.forEach((point) => expandBoundsWithPoint(contentBounds, point));
 
   const regionMarkup = regionOrder
     .map((actualIndex, slotIndex) => {
@@ -1195,6 +1220,7 @@ function buildOverviewSvgInner() {
       const projected = targetRegions[slotIndex].polygon.map((point) =>
         worldToOverviewPoint(point, scale, offsetX, offsetY)
       );
+      projected.forEach((point) => expandBoundsWithPoint(contentBounds, point));
       const labelPlacement = getOverviewDimensionLabelPlacement(
         targetScene,
         slotIndex,
@@ -1234,16 +1260,19 @@ function buildOverviewSvgInner() {
       );
       const point = worldToOverviewPoint(mappedPoint, scale, offsetX, offsetY);
       const pointRadius = Math.max(4, item.diameter * 0.45);
+      expandBoundsWithCircle(contentBounds, point, pointRadius);
       const label = placeOverviewLabel(
         item.name,
         point,
         pointRadius,
         center,
         outerRadius,
-        width,
-        height,
         labelBoxes
       );
+      expandBoundsWithBox(contentBounds, label.box);
+      if (label.withLeader) {
+        expandBoundsWithLine(contentBounds, label.lineStart, label.lineEnd, 2);
+      }
       return `
         <g>
           <circle
@@ -1264,20 +1293,29 @@ function buildOverviewSvgInner() {
                 />`
               : ""
           }
-          <text
-            class="overview-name"
-            x="${label.textX}"
-            y="${label.textY}"
-            text-anchor="${label.anchor}"
-          >
-            ${escapeHtml(item.name)}
-          </text>
+          ${renderOverviewLabelText(label)}
         </g>
       `;
     })
     .join("");
 
-  return `
+  const finalBounds = finalizeBounds(contentBounds, {
+    minX: 0,
+    minY: 0,
+    maxX: width,
+    maxY: height,
+  });
+  const paddingAroundContent = 16;
+  const minX = Math.min(0, finalBounds.minX - paddingAroundContent);
+  const minY = Math.min(0, finalBounds.minY - paddingAroundContent);
+  const maxX = Math.max(width, finalBounds.maxX + paddingAroundContent);
+  const maxY = Math.max(height, finalBounds.maxY + paddingAroundContent);
+
+  return {
+    viewBox: `${minX} ${minY} ${maxX - minX} ${maxY - minY}`,
+    width: maxX - minX,
+    height: maxY - minY,
+    markup: `
     <style>
       svg { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
       .overview-region { stroke: rgba(67, 57, 48, 0.22); stroke-width: 1.2; }
@@ -1287,11 +1325,31 @@ function buildOverviewSvgInner() {
       .overview-name { fill: rgba(20, 20, 20, 0.96); font-size: 10px; font-weight: 400; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
       .overview-leader { stroke: rgba(67, 57, 48, 0.44); stroke-width: 1; }
     </style>
-    <rect x="0" y="0" width="${width}" height="${height}" rx="16" fill="rgba(255,255,255,0.96)" />
+    <rect
+      x="${minX}"
+      y="${minY}"
+      width="${maxX - minX}"
+      height="${maxY - minY}"
+      rx="16"
+      fill="rgba(255,255,255,0.96)"
+    />
     <polygon class="overview-outline" points="${pointsToString(outlinePoints)}" />
     ${regionMarkup}
     ${pointsMarkup}
-  `;
+  `,
+  };
+}
+
+function toggleOverviewCard() {
+  state.overviewCollapsed = !state.overviewCollapsed;
+  syncOverviewCard();
+}
+
+function syncOverviewCard() {
+  dom.overviewCard.classList.toggle("is-collapsed", state.overviewCollapsed);
+  dom.overviewContent.hidden = state.overviewCollapsed;
+  dom.overviewToggle.setAttribute("aria-expanded", String(!state.overviewCollapsed));
+  dom.overviewToggle.textContent = state.overviewCollapsed ? "Show Map" : "Collapse";
 }
 
 function worldToOverviewPoint(point, scale, offsetX, offsetY) {
@@ -1301,66 +1359,258 @@ function worldToOverviewPoint(point, scale, offsetX, offsetY) {
   };
 }
 
-function placeOverviewLabel(text, point, radius, center, outerRadius, width, height, boxes) {
-  const estimatedWidth = Math.max(34, text.length * 6.1);
-  const estimatedHeight = 12;
-  const directBox = {
-    x: point.x - estimatedWidth / 2,
-    y: point.y - radius - 12,
-    width: estimatedWidth,
-    height: estimatedHeight,
-  };
-  const directFits =
-    directBox.x >= 6 &&
-    directBox.x + directBox.width <= width - 6 &&
-    directBox.y >= 6 &&
-    !boxes.some((box) => boxesOverlap(box, directBox));
-
-  if (directFits) {
-    boxes.push(directBox);
-    return {
-      withLeader: false,
-      textX: point.x,
-      textY: directBox.y + estimatedHeight,
-      anchor: "middle",
-    };
-  }
-
+function placeOverviewLabel(text, point, radius, center, outerRadius, boxes) {
   const dx = point.x - center.x;
   const dy = point.y - center.y;
   const norm = Math.hypot(dx, dy) || 1;
   const ux = dx / norm;
   const uy = dy / norm;
-  const lineEnd = {
-    x: clamp(center.x + ux * (outerRadius + 12), 8, width - 8),
-    y: clamp(center.y + uy * (outerRadius + 12), 8, height - 8),
-  };
-  const baseTextX = lineEnd.x + ux * 10;
-  const textY = clamp(lineEnd.y + uy * 10, 16, height - 10);
-  const anchor = ux >= 0 ? "start" : "end";
-  const textX =
-    anchor === "start"
-      ? clamp(baseTextX, 8, width - estimatedWidth - 8)
-      : clamp(baseTextX, estimatedWidth + 8, width - 8);
-  const leaderBox = {
-    x: anchor === "start" ? textX : textX - estimatedWidth,
-    y: textY - estimatedHeight + 2,
-    width: estimatedWidth,
-    height: estimatedHeight,
-  };
-  boxes.push(leaderBox);
+  const tangent = { x: -uy, y: ux };
+  const layouts = buildOverviewLabelLayouts(text);
+  const candidates = [];
 
+  layouts.forEach((layout, layoutIndex) => {
+    if (layout.width <= 108 || layout.lines.length > 1) {
+      const directTop = point.y - radius - layout.height - 6;
+      candidates.push(
+        createOverviewLabelCandidate({
+          layout,
+          withLeader: false,
+          textX: point.x,
+          textY: directTop + OVERVIEW_LABEL_FONT_SIZE,
+          anchor: "middle",
+          priority: layoutIndex,
+        })
+      );
+    }
+
+    [16, 30, 46, 62].forEach((distance, distanceIndex) => {
+      [0, 14, -14, 28, -28].forEach((shift, shiftIndex) => {
+        const lineEnd = {
+          x: center.x + ux * (outerRadius + distance) + tangent.x * shift,
+          y: center.y + uy * (outerRadius + distance) + tangent.y * shift,
+        };
+        candidates.push(
+          createOverviewLabelCandidate({
+            layout,
+            withLeader: true,
+            lineStart: {
+              x: point.x + ux * (radius + 2),
+              y: point.y + uy * (radius + 2),
+            },
+            lineEnd,
+            textX: lineEnd.x + ux * 12,
+            textY: lineEnd.y - layout.height / 2 + OVERVIEW_LABEL_FONT_SIZE,
+            anchor: ux >= 0 ? "start" : "end",
+            priority: 10 + layoutIndex * 20 + distanceIndex * 5 + shiftIndex,
+          })
+        );
+      });
+    });
+  });
+
+  let bestCandidate = candidates[0];
+  let bestScore = Infinity;
+
+  candidates.forEach((candidate) => {
+    const overlapCount = boxes.reduce(
+      (count, box) => count + (boxesOverlap(box, candidate.box) ? 1 : 0),
+      0
+    );
+    const score = overlapCount * 1000 + candidate.priority;
+    if (score < bestScore) {
+      bestScore = score;
+      bestCandidate = candidate;
+    }
+  });
+
+  boxes.push(bestCandidate.box);
+  return bestCandidate;
+}
+
+function buildOverviewLabelLayouts(text) {
+  const normalized = text.trim().replace(/\s+/g, " ");
+  const layouts = [];
+  const seen = new Set();
+
+  const addLayout = (lines) => {
+    const layout = createOverviewTextLayout(lines);
+    if (!layout.lines.length) return;
+    const key = layout.lines.join("|");
+    if (seen.has(key)) return;
+    seen.add(key);
+    layouts.push(layout);
+  };
+
+  addLayout([normalized]);
+
+  if (normalized.length > 24) {
+    addLayout(wrapOverviewText(normalized, 24, 2));
+  }
+  if (normalized.length > 34) {
+    addLayout(wrapOverviewText(normalized, 20, 3));
+  }
+  if (normalized.length > 48) {
+    addLayout(wrapOverviewText(normalized, 17, 4));
+  }
+
+  return layouts;
+}
+
+function wrapOverviewText(text, targetLength, maxLines) {
+  const words = text.split(" ");
+  const lines = [];
+  let current = "";
+
+  words.forEach((word) => {
+    const tentative = current ? `${current} ${word}` : word;
+    if (!current || tentative.length <= targetLength || lines.length + 1 >= maxLines) {
+      current = tentative;
+      return;
+    }
+    lines.push(current);
+    current = word;
+  });
+
+  if (current) {
+    lines.push(current);
+  }
+
+  if (lines.length <= maxLines) {
+    return lines;
+  }
+
+  return [...lines.slice(0, maxLines - 1), lines.slice(maxLines - 1).join(" ")];
+}
+
+function createOverviewTextLayout(lines) {
+  const normalizedLines = lines.map((line) => line.trim()).filter(Boolean);
   return {
-    withLeader: true,
-    lineStart: {
-      x: point.x + ux * (radius + 2),
-      y: point.y + uy * (radius + 2),
-    },
-    lineEnd,
+    lines: normalizedLines,
+    width: Math.max(34, ...normalizedLines.map(estimateOverviewTextWidth)),
+    height: Math.max(
+      OVERVIEW_LABEL_LINE_HEIGHT,
+      normalizedLines.length * OVERVIEW_LABEL_LINE_HEIGHT
+    ),
+  };
+}
+
+function estimateOverviewTextWidth(text) {
+  return text.length * 5.7 + 6;
+}
+
+function createOverviewLabelCandidate({
+  layout,
+  withLeader,
+  textX,
+  textY,
+  anchor,
+  lineStart = null,
+  lineEnd = null,
+  priority,
+}) {
+  return {
+    layout,
+    withLeader,
     textX,
     textY,
     anchor,
+    lineStart,
+    lineEnd,
+    priority,
+    box: getOverviewTextBox(layout, textX, textY, anchor),
   };
+}
+
+function getOverviewTextBox(layout, textX, textY, anchor) {
+  const left =
+    anchor === "middle"
+      ? textX - layout.width / 2
+      : anchor === "start"
+        ? textX
+        : textX - layout.width;
+  return {
+    x: left,
+    y: textY - OVERVIEW_LABEL_FONT_SIZE,
+    width: layout.width,
+    height: layout.height,
+  };
+}
+
+function renderOverviewLabelText(label) {
+  if (label.layout.lines.length === 1) {
+    return `
+      <text
+        class="overview-name"
+        x="${label.textX}"
+        y="${label.textY}"
+        text-anchor="${label.anchor}"
+      >
+        ${escapeHtml(label.layout.lines[0])}
+      </text>
+    `;
+  }
+
+  return `
+    <text
+      class="overview-name"
+      x="${label.textX}"
+      y="${label.textY}"
+      text-anchor="${label.anchor}"
+    >
+      ${label.layout.lines
+        .map((line, index) =>
+          index === 0
+            ? `<tspan x="${label.textX}" y="${label.textY}">${escapeHtml(line)}</tspan>`
+            : `<tspan x="${label.textX}" dy="${OVERVIEW_LABEL_LINE_HEIGHT}">${escapeHtml(line)}</tspan>`
+        )
+        .join("")}
+    </text>
+  `;
+}
+
+function createBounds() {
+  return {
+    minX: Infinity,
+    minY: Infinity,
+    maxX: -Infinity,
+    maxY: -Infinity,
+  };
+}
+
+function finalizeBounds(bounds, fallback) {
+  if (Number.isFinite(bounds.minX)) {
+    return bounds;
+  }
+  return fallback;
+}
+
+function expandBoundsWithPoint(bounds, point) {
+  bounds.minX = Math.min(bounds.minX, point.x);
+  bounds.maxX = Math.max(bounds.maxX, point.x);
+  bounds.minY = Math.min(bounds.minY, point.y);
+  bounds.maxY = Math.max(bounds.maxY, point.y);
+}
+
+function expandBoundsWithCircle(bounds, point, radius) {
+  expandBoundsWithPoint(bounds, { x: point.x - radius, y: point.y - radius });
+  expandBoundsWithPoint(bounds, { x: point.x + radius, y: point.y + radius });
+}
+
+function expandBoundsWithBox(bounds, box) {
+  expandBoundsWithPoint(bounds, { x: box.x, y: box.y });
+  expandBoundsWithPoint(bounds, { x: box.x + box.width, y: box.y + box.height });
+}
+
+function expandBoundsWithLine(bounds, start, end, padding = 0) {
+  expandBoundsWithPoint(bounds, {
+    x: Math.min(start.x, end.x) - padding,
+    y: Math.min(start.y, end.y) - padding,
+  });
+  expandBoundsWithPoint(bounds, {
+    x: Math.max(start.x, end.x) + padding,
+    y: Math.max(start.y, end.y) + padding,
+  });
 }
 
 function boxesOverlap(a, b) {

@@ -281,8 +281,8 @@ input[type="color"] {
 }
 
 .viz-card {
-  border-radius: 30px;
-  padding: 16px;
+  border-radius: 20px;
+  padding: 5px;
   min-height: calc(100vh - 48px);
   min-width: 0;
 }
@@ -302,9 +302,9 @@ input[type="color"] {
   top: 18px;
   right: 18px;
   z-index: 4;
-  width: min(340px, calc(100% - 36px));
+  width: min(460px, calc(100% - 36px));
   padding: 14px;
-  border-radius: 18px;
+  border-radius: 10px;
   background: rgba(255, 250, 243, 0.94);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(100, 88, 78, 0.14);
@@ -320,6 +320,13 @@ input[type="color"] {
 }
 
 .overview-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.overview-export-actions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
@@ -343,6 +350,21 @@ input[type="color"] {
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.86);
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.overview-card.is-collapsed {
+  width: auto;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.overview-card.is-collapsed .overview-header {
+  margin-bottom: 0;
+  align-items: center;
+}
+
+.overview-card.is-collapsed .overview-export-actions {
+  display: none;
 }
 
 .camera-controls {

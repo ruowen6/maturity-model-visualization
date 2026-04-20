@@ -97,26 +97,39 @@
 
         <section class="viz-card">
           <div id="canvas-wrap" class="canvas-wrap">
-            <div class="overview-card">
+            <div id="overview-card" class="overview-card">
               <div class="overview-header">
                 <div>
                   <p class="eyebrow">State Map</p>
                   <h3>Top View Snapshot</h3>
                 </div>
                 <div class="overview-actions">
-                  <button id="export-overview" type="button" class="ghost-button small-export">
-                    Export SVG
+                  <button
+                    id="overview-toggle"
+                    type="button"
+                    class="ghost-button small-export"
+                    aria-expanded="true"
+                    aria-controls="overview-content"
+                  >
+                    Collapse
                   </button>
-                  <button id="export-overview-png" type="button" class="ghost-button small-export">
-                    Export PNG
-                  </button>
+                  <div id="overview-export-actions" class="overview-export-actions">
+                    <button id="export-overview" type="button" class="ghost-button small-export">
+                      Export SVG
+                    </button>
+                    <button id="export-overview-png" type="button" class="ghost-button small-export">
+                      Export PNG
+                    </button>
+                  </div>
                 </div>
               </div>
-              <svg
-                id="overview-svg"
-                viewBox="0 0 320 320"
-                aria-label="Top view state map"
-              ></svg>
+              <div id="overview-content" class="overview-content">
+                <svg
+                  id="overview-svg"
+                  viewBox="0 0 320 320"
+                  aria-label="Top view state map"
+                ></svg>
+              </div>
             </div>
             <div class="camera-controls">
               <div class="control-block">
