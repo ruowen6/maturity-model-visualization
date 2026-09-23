@@ -83,7 +83,11 @@ function init() {
 function bindEvents() {
   dom.dimensionCount.addEventListener("change", (event) => {
     const count = clamp(Number(event.target.value) || 2, 2, 8);
+    const previousCount = state.dimensions.length;
     createDefaultDimensions(count);
+    if (count > previousCount) {
+      randomizeAllSubcategoryPositions();
+    }
     renderAll();
   });
 
@@ -599,7 +603,7 @@ function renderSubcategoryControls() {
   }
 
   dom.subcategoryStatus.textContent =
-    "Each group inherits the region color. Double-click a column to enter relocate mode, then drag it with the left mouse button. Right-drag rotates the 3D view, and R resets the camera.";
+    "Each group inherits the region color. Increasing the dimension count automatically randomizes all positions. Double-click a column to relocate it; right-drag rotates the view, and R resets the camera.";
 
   dom.subcategoryGroups.innerHTML = state.dimensions
     .map((dimension) => {
@@ -609,7 +613,7 @@ function renderSubcategoryControls() {
         <section class="subcategory-group">
           <div class="group-header" style="background:${hexToRgba(
             dimension.color,
-            0.35
+            0.16
           )}">
             <div>
               <h3>${escapeHtml(dimension.name)}</h3>
@@ -798,7 +802,6 @@ function randomizeAllSubcategoryPositions() {
   });
   state.movingSubcategoryId = null;
   state.relocateDrag.active = false;
-  renderSubcategoryControls();
 }
 
 function renderVisualization() {
@@ -892,8 +895,8 @@ function renderVisualization() {
   dom.svg.innerHTML = `
     <defs>
       <linearGradient id="floor-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
-        <stop offset="0%" stop-color="#fffdfa" />
-        <stop offset="100%" stop-color="#ece4d8" />
+        <stop offset="0%" stop-color="#ffffff" />
+        <stop offset="100%" stop-color="#f6f8fa" />
       </linearGradient>
     </defs>
 
@@ -1317,20 +1320,20 @@ function buildOverviewSvgData() {
     height: maxY - minY,
     markup: `
     <style>
-      svg { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-      .overview-region { stroke: rgba(67, 57, 48, 0.22); stroke-width: 1.2; }
-      .overview-outline { fill: none; stroke: rgba(52, 43, 37, 0.32); stroke-width: 1.4; }
-      .overview-point { fill-opacity: 0.88; stroke: rgba(36, 31, 27, 0.46); stroke-width: 1.1; }
-      .overview-dimension-label { fill: rgba(58, 58, 58, 0.72); font-size: 15px; font-weight: 800; text-anchor: middle; dominant-baseline: middle; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-      .overview-name { fill: rgba(20, 20, 20, 0.96); font-size: 10px; font-weight: 400; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-      .overview-leader { stroke: rgba(67, 57, 48, 0.44); stroke-width: 1; }
+      svg { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .overview-region { stroke: rgba(31, 35, 40, 0.22); stroke-width: 1.2; }
+      .overview-outline { fill: none; stroke: rgba(31, 35, 40, 0.34); stroke-width: 1.4; }
+      .overview-point { fill-opacity: 0.88; stroke: rgba(31, 35, 40, 0.48); stroke-width: 1.1; }
+      .overview-dimension-label { fill: rgba(31, 35, 40, 0.74); font-size: 15px; font-weight: 800; text-anchor: middle; dominant-baseline: middle; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .overview-name { fill: rgba(31, 35, 40, 0.96); font-size: 10px; font-weight: 400; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .overview-leader { stroke: rgba(31, 35, 40, 0.46); stroke-width: 1; }
     </style>
     <rect
       x="${minX}"
       y="${minY}"
       width="${maxX - minX}"
       height="${maxY - minY}"
-      rx="16"
+      rx="6"
       fill="rgba(255,255,255,0.96)"
     />
     <polygon class="overview-outline" points="${pointsToString(outlinePoints)}" />
