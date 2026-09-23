@@ -1,2 +1,2 @@
 # maturity-model-visualization
-A tool to help visualize maturity model settings.
+A tool to help visualize maturity model settings for my paperwork :)
